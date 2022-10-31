@@ -55,7 +55,8 @@ jobs:
         id: create-task
         run: >
           aws ecs run-task 
-          --launch-type "${{ github.event.inputs.LaunchMode }}"
+          --cluster "${{ github.event.inputs.Env }}_git_runner" --launch-type "${{ github.event.inputs.LaunchMode }}" 
+          --task-definition "${{ steps.task-config.outputs.TASK_DEF_NAME }}" 
           --overrides '{"containerOverrides": [{"name": "${{ steps.task-config.outputs.TASK_DEF_NAME }}",
           "environment" : [{"name": "RUNNER_NAME", "value": "${{ steps.task-config.outputs.TASK_DEF_NAME }}-${{ steps.runner-label.outputs.vm_id }}"},
           {"name": "RUNNER_LABELS", "value": "${{ steps.runner-label.outputs.vm_id }}"},
