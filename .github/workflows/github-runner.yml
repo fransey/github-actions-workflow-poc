@@ -5,7 +5,7 @@ on:
       Env:
         description: 'Environment'
         required: true
-        default: 'ne6'
+        default: 'development'
       LaunchMode:
         description: 'Launch mode for Github runner'
         required: true
