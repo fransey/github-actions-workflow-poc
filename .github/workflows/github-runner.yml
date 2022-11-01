@@ -48,7 +48,7 @@ jobs:
         run: |
           if [[ "${{ github.event.inputs.LaunchMode }}" == "EC2" ]];
           then
-            echo "::set-output name=NET_CONFIG::--network-configuration 'awsvpcConfiguration={subnets=[subnet-05e77f63e94cbedc9],securityGroups=[develo-8961],assignPublicIp=ENABLED}'"
+            echo "::set-output name=NET_CONFIG::--network-configuration 'awsvpcConfiguration={subnets=[subnet-05e77f63e94cbedc9],securityGroups=[sg-0952f40e32468900f],assignPublicIp=ENABLED}'"
             echo "::set-output name=TASK_DEF_NAME::${{ github.event.inputs.Env }}_ec2_git_runner"
           else
             echo "::set-output name=NET_CONFIG::--network-configuration 'awsvpcConfiguration={subnets=[${{ secrets.SUBNET }}],securityGroups=[${{ secrets.SECURITY_GROUP }}],assignPublicIp=ENABLED}'"
