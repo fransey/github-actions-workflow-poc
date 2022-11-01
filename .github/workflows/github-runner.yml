@@ -6,6 +6,10 @@ on:
         description: 'Environment'
         required: true
         default: 'development'
+        options:
+          - development
+          - staging
+          - production
       LaunchMode:
         description: 'Launch mode for Github runner'
         required: true
