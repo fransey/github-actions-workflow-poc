@@ -1,26 +1,16 @@
-name: infra-aws-core
+name: Deployment workflow for casinoonlinejp
+
 on:
-  workflow_dispatch:
-    inputs:
-      Env:
-        description: 'Environment'
-        required: true
-        default: 'development'
-        options:
-          - development
-          - staging
-          - production
-      LaunchMode:
-        description: 'Launch mode for Github runner'
-        required: true
-        default: 'EC2'
-        options:
-          - EC2
-          - FARGATE
+  push:
+    branches: 
+    - 'develop'
+  pull_request:
+    branches:
+    - 'develop'
 jobs:
   activate-github-runner:
     runs-on: ubuntu-latest
-    environment: ${{ github.event.inputs.Env }}
+    environment: ${{ github.base_ref }}
     permissions:
       id-token: write
       contents: read
@@ -46,20 +36,14 @@ jobs:
       - name: Identify applicable configuration
         id: task-config
         run: |
-          if [[ "${{ github.event.inputs.LaunchMode }}" == "EC2" ]];
-          then
-            echo "::set-output name=NET_CONFIG::--network-configuration 'awsvpcConfiguration={subnets=[subnet-05e77f63e94cbedc9],securityGroups=[sg-0952f40e32468900f],assignPublicIp=DISABLED}'"
-            echo "::set-output name=TASK_DEF_NAME::${{ github.event.inputs.Env }}_ec2_git_runner"
-          else
             echo "::set-output name=NET_CONFIG::--network-configuration 'awsvpcConfiguration={subnets=[${{ secrets.SUBNET }}],securityGroups=[${{ secrets.SECURITY_GROUP }}],assignPublicIp=ENABLED}'"
             echo "::set-output name=TASK_DEF_NAME::${{ github.event.inputs.Env }}_fg_git_runner"
-          fi
         shell: bash
       - name: Start ECS Task for Github self-hosted runner
         id: create-task
         run: >
           aws ecs run-task 
-          --cluster "${{ github.event.inputs.Env }}-git-runner" --launch-type "${{ github.event.inputs.LaunchMode }}" 
+          --cluster "${{ github.event.inputs.Env }}-git-runner" --launch-type "FARGATE" 
           --task-definition "${{ steps.task-config.outputs.TASK_DEF_NAME }}" 
           --overrides '{"containerOverrides": [{"name": "infra-aws-core",
           "environment" : [{"name": "RUNNER_NAME", "value": "${{ steps.task-config.outputs.TASK_DEF_NAME }}-${{ steps.runner-label.outputs.vm_id }}"},
@@ -67,15 +51,51 @@ jobs:
           {"name": "GITHUB_PAT", "value": "${{ secrets.RUNNER_PAT }}"}
           ]}]}'
           ${{ steps.task-config.outputs.NET_CONFIG }}
-
-  build-code:
+  deployment:
     needs: [activate-github-runner]
-    runs-on: [self-hosted, "${{ needs.activate-github-runner.outputs.gitrunner_vm_id }}"]
+    runs-on: ['self-hosted', "${{ needs.activate-github-runner.outputs.gitrunner_vm_id }}"]
     permissions:
       id-token: write
       contents: read
     steps:
-      - name: Testing build
-        run: |
-          MY_WD=$(pwd)
-          echo "Hello world ${MY_WD}"
+    - name: Set environment for branch
+      run: |
+        if [[ $GITHUB_BASE_REF == 'develop' ]]; then
+            echo "working_dir_wp-site=/var/www/html/casinoonlinejp-dev.catena.media/wp-site" >> "$GITHUB_ENV"
+            echo "efs_name=fs-009ea642a4ee5d5be.efs.ap-east-1.amazonaws.com" >> "$GITHUB_ENV"
+            echo "environment=development" >> "$GITHUB_ENV"
+        else
+            echo "working_dir_wp-site=/var/www/html/casinoonlinejp-stg.catena.media/wp-site" >> "$GITHUB_ENV"
+            echo "efs_name=fs-xxxxx.efs.ap-east-1.amazonaws.com" >> "$GITHUB_ENV"
+            echo "environment=staging" >> "$GITHUB_ENV"
+        fi
+    - name: Checkout
+      uses: actions/checkout@v3
+    - name: casinoonlinejp-dev deployment
+      if:  github.base_ref == 'develop'
+      run : | 
+        echo "Running pipeline on Bastion AWS APAC Dev"
+    - name: casinoonlinejp-stg deployment
+      if:  github.base_ref == 'staging'
+      run : | 
+        echo "Running pipeline on Bastion AWS APAC Stg"
+    - name: Check mount status and Mount EFS
+      uses: ./.github/workflows/mount-efs
+      with:
+        efs_name: ${{env.efs_name}}
+    - name: Pre deployment steps
+      uses: ./.github/workflows/pre-deployment
+      with:
+        working_dir_wp-site: ${{env.working_dir_wp-site}}
+    - name: Git Checkout
+      uses: ./.github/workflows/deploy
+      with:
+        working_dir_wp-site: ${{env.working_dir_wp-site}}
+    - name: Post deployment steps
+      uses: ./.github/workflows/post-deployment
+      with:
+        working_dir_wp-site: ${{env.working_dir_wp-site}}
+    - name: Unmount file system
+      uses: ./.github/workflows/unmount-efs
+    - name: Cleanup workspace
+      uses: ./.github/workflows/cleanup
